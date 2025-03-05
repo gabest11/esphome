@@ -1,13 +1,25 @@
 from esphome import pins
 import esphome.codegen as cg
-from esphome.components import esp32, speaker
+from esphome.components import audio, esp32, speaker
 import esphome.config_validation as cv
-from esphome.const import CONF_CHANNEL, CONF_ID, CONF_MODE, CONF_TIMEOUT
+from esphome.const import (
+    CONF_BITS_PER_SAMPLE,
+    CONF_BUFFER_DURATION,
+    CONF_CHANNEL,
+    CONF_ID,
+    CONF_MODE,
+    CONF_NEVER,
+    CONF_NUM_CHANNELS,
+    CONF_SAMPLE_RATE,
+    CONF_TIMEOUT,
+)
 
 from .. import (
     CONF_I2S_DOUT_PIN,
+    CONF_I2S_MODE,
     CONF_LEFT,
     CONF_MONO,
+    CONF_PRIMARY,
     CONF_RIGHT,
     CONF_STEREO,
     I2SAudioOut,
@@ -23,7 +35,6 @@ DEPENDENCIES = ["i2s_audio"]
 I2SAudioSpeaker = i2s_audio_ns.class_(
     "I2SAudioSpeaker", cg.Component, speaker.Speaker, I2SAudioOut
 )
-
 
 CONF_DAC_TYPE = "dac_type"
 CONF_I2S_COMM_FMT = "i2s_comm_fmt"
@@ -52,7 +63,41 @@ I2C_COMM_FMT_OPTIONS = {
 NO_INTERNAL_DAC_VARIANTS = [esp32.const.VARIANT_ESP32S2]
 
 
-def validate_esp32_variant(config):
+def _set_num_channels_from_config(config):
+    if config[CONF_CHANNEL] in (CONF_MONO, CONF_LEFT, CONF_RIGHT):
+        config[CONF_NUM_CHANNELS] = 1
+    else:
+        config[CONF_NUM_CHANNELS] = 2
+
+    return config
+
+
+def _set_stream_limits(config):
+    if config[CONF_I2S_MODE] == CONF_PRIMARY:
+        # Primary mode has modifiable stream settings
+        audio.set_stream_limits(
+            min_bits_per_sample=8,
+            max_bits_per_sample=32,
+            min_channels=1,
+            max_channels=2,
+            min_sample_rate=16000,
+            max_sample_rate=48000,
+        )(config)
+    else:
+        # Secondary mode has unmodifiable max bits per sample and min/max sample rates
+        audio.set_stream_limits(
+            min_bits_per_sample=8,
+            max_bits_per_sample=config.get(CONF_BITS_PER_SAMPLE),
+            min_channels=1,
+            max_channels=2,
+            min_sample_rate=config.get(CONF_SAMPLE_RATE),
+            max_sample_rate=config.get(CONF_SAMPLE_RATE),
+        )
+
+    return config
+
+
+def _validate_esp32_variant(config):
     if config[CONF_DAC_TYPE] != "internal":
         return config
     variant = esp32.get_esp32_variant()
@@ -73,12 +118,17 @@ BASE_SCHEMA = (
     .extend(
         {
             cv.Optional(
-                CONF_TIMEOUT, default="500ms"
+                CONF_BUFFER_DURATION, default="500ms"
             ): cv.positive_time_period_milliseconds,
+            cv.Optional(CONF_TIMEOUT, default="500ms"): cv.Any(
+                cv.positive_time_period_milliseconds,
+                cv.one_of(CONF_NEVER, lower=True),
+            ),
         }
     )
     .extend(cv.COMPONENT_SCHEMA)
 )
+
 
 CONFIG_SCHEMA = cv.All(
     cv.typed_schema(
@@ -101,7 +151,9 @@ CONFIG_SCHEMA = cv.All(
         },
         key=CONF_DAC_TYPE,
     ),
-    validate_esp32_variant,
+    _validate_esp32_variant,
+    _set_num_channels_from_config,
+    _set_stream_limits,
 )
 
 
@@ -116,4 +168,6 @@ async def to_code(config):
     else:
         cg.add(var.set_dout_pin(config[CONF_I2S_DOUT_PIN]))
         cg.add(var.set_i2s_comm_fmt(config[CONF_I2S_COMM_FMT]))
-    cg.add(var.set_timeout(config[CONF_TIMEOUT]))
+    if config[CONF_TIMEOUT] != CONF_NEVER:
+        cg.add(var.set_timeout(config[CONF_TIMEOUT]))
+    cg.add(var.set_buffer_duration(config[CONF_BUFFER_DURATION]))
