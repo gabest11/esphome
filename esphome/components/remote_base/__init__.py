@@ -24,6 +24,7 @@ from esphome.const import (
     CONF_ONE,
     CONF_PROTOCOL,
     CONF_PULSE_LENGTH,
+    CONF_REVERSED,
     CONF_RC_CODE_1,
     CONF_RC_CODE_2,
     CONF_REPEAT,
@@ -2108,3 +2109,95 @@ async def Toto_action(var, config, args):
     cg.add(var.set_rc_code_2(template_))
     template_ = await cg.templatable(config[CONF_COMMAND], args, cg.uint8)
     cg.add(var.set_command(template_))
+
+
+# RC Switch BUT BETTER
+
+CONF_SIGNAL_TYPE = "signal_type"
+
+RC_SWITCH_BUT_BETTER_TIMING_SCHEMA = cv.All([cv.uint8_t], cv.Length(min=2, max=2))
+
+RC_SWITCH_BUT_BETTER_PROTOCOL_SCHEMA = cv.Schema(
+    {
+        cv.Required(CONF_PULSE_LENGTH): cv.uint16_t,
+        cv.Optional(CONF_SYNC, default=[1, 31]): RC_SWITCH_BUT_BETTER_TIMING_SCHEMA,
+        cv.Optional(CONF_ZERO, default=[1, 3]): RC_SWITCH_BUT_BETTER_TIMING_SCHEMA,
+        cv.Optional(CONF_ONE, default=[3, 1]): RC_SWITCH_BUT_BETTER_TIMING_SCHEMA,
+        cv.Optional(CONF_REPEAT, default=8): cv.uint8_t,
+        cv.Optional(CONF_INVERTED, default=False): cv.boolean,
+        cv.Optional(CONF_REVERSED, default=False): cv.boolean,
+        cv.Optional(CONF_SIGNAL_TYPE, default="PWM"): cv.one_of(
+            "PWM", "PPM", upper=True
+        ),
+    }
+)
+
+
+def validate_rc_switch_but_better_raw_code(value):
+    if not isinstance(value, str):
+        raise cv.Invalid("All RCSwitch BUT BETTER codes must be in quotes ('')")
+    for c in value:
+        if c not in ("0", "1", "x"):
+            raise cv.Invalid(
+                f"Invalid RCSwitch BUT BETTER code character '{c}'.Only '0', '1' and 'x' are allowed"
+            )
+    if not value:
+        raise cv.Invalid("RCSwitch  BUT BETTER code must not be empty")
+    return value
+
+
+def build_rc_switch_but_better_protocol(config):
+    pl = config[CONF_PULSE_LENGTH]
+    return RcSwitchButBetterProtocol(
+        config[CONF_SYNC][0] * pl,
+        config[CONF_SYNC][1] * pl,
+        config[CONF_ZERO][0] * pl,
+        config[CONF_ZERO][1] * pl,
+        config[CONF_ONE][0] * pl,
+        config[CONF_ONE][1] * pl,
+        config[CONF_REPEAT],
+        config[CONF_INVERTED],
+        config[CONF_REVERSED],
+        config[CONF_SIGNAL_TYPE],
+    )
+
+
+RC_SWITCH_BUT_BETTER_SCHEMA = cv.Schema(
+    {
+        cv.Required(CONF_CODE): validate_rc_switch_but_better_raw_code,
+        cv.Optional(CONF_PROTOCOL, default=1): RC_SWITCH_BUT_BETTER_PROTOCOL_SCHEMA,
+    }
+)
+
+RcSwitchButBetterData = ns.struct("RcSwitchButBetterData")
+RcSwitchButBetterProtocol = ns.class_("RcSwitchButBetterProtocol")
+RCSwitchButBetterAction = ns.class_(
+    "RCSwitchButBetterAction", RemoteTransmitterActionBase
+)
+RcSwitchButBetterBinarySensor = ns.class_(
+    "RcSwitchButBetterBinarySensor", RemoteReceiverBinarySensorBase
+)
+
+
+@register_binary_sensor(
+    "rc_switch_but_better", RcSwitchButBetterBinarySensor, RC_SWITCH_BUT_BETTER_SCHEMA
+)
+def rc_switch_but_better_binary_sensor(var, config):
+    cg.add(var.set_protocol(build_rc_switch_but_better_protocol(config[CONF_PROTOCOL])))
+    cg.add(var.set_code(config[CONF_CODE]))
+
+
+@register_action(
+    "rc_switch_but_better",
+    RCSwitchButBetterAction,
+    RC_SWITCH_BUT_BETTER_SCHEMA,
+)
+async def rc_switch_but_better_action(var, config, args):
+    proto = await cg.templatable(
+        config[CONF_PROTOCOL],
+        args,
+        RcSwitchButBetterProtocol,
+        to_exp=build_rc_switch_but_better_protocol,
+    )
+    cg.add(var.set_protocol(proto))
+    cg.add(var.set_code(await cg.templatable(config[CONF_CODE], args, cg.std_string)))
