@@ -80,7 +80,7 @@ class RcSwitchButBetterProtocol : public RemoteProtocol<RcSwitchButBetterData> {
   void transmit_code_(RemoteTransmitData *dst) const;
 
   virtual void setup() {}
-  virtual bool to_data(RcSwitchButBetterData &data) const;
+  virtual bool to_data(RcSwitchButBetterData &data, uint16_t nbits) const;
   virtual bool to_code(const RcSwitchButBetterData &data);
 };
 

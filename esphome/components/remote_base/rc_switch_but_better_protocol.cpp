@@ -30,8 +30,7 @@ optional<RcSwitchButBetterData> RcSwitchButBetterProtocol::decode(RemoteReceiveD
         // found something, extend search till the end
         search_limit = search_end;
         // transform may also return false if it needs more packets to complete data
-        data.resize(nbits);
-        if (this->to_data(data)) {
+        if (this->to_data(data, nbits)) {
           ESP_LOGV(TAG, "%s", data.c_str());
           return data;
         }
@@ -56,8 +55,7 @@ optional<RcSwitchButBetterData> RcSwitchButBetterProtocol::decode(RemoteReceiveD
       // found something, extend search till the end
       search_limit = search_end;
       // transform may also return false if it needs more packets to complete data
-      data.resize(nbits);
-      if (this->to_data(data)) {
+      if (this->to_data(data, nbits)) {
         ESP_LOGV(TAG, "%s", data.c_str());
         return data;
       }
@@ -207,7 +205,8 @@ void RcSwitchButBetterProtocol::set_bits_(uint16_t pos, uint8_t nbits, uint32_t 
   // TODO
 }
 
-bool RcSwitchButBetterProtocol::to_data(RcSwitchButBetterData &data) const {
+bool RcSwitchButBetterProtocol::to_data(RcSwitchButBetterData &data, uint16_t nbits) const {
+  data.resize(nbits);
   for (size_t i = 0; i < data.size(); i++) {
     data[i] = (this->code_[i >> 3] & (1 << (i & 7))) ? '1' : '0';
   }
