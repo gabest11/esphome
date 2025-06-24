@@ -18,9 +18,9 @@ optional<RcSwitchButBetterData> RcSwitchButBetterProtocol::decode(RemoteReceiveD
   RcSwitchButBetterData data;
   this->code_.resize(std::max((this->nbits_ + 7) >> 3, 8));
 
-  uint32_t samples = (this->nbits_ + 1) * 2;                                    // sync + nbits
-  uint32_t search_end = src.size() > samples ? src.size() - samples + 1 : 0ul;  // last possible sync + 1
-  uint32_t search_limit = std::min(search_end, samples * 3 / 2);                // limit search
+  uint32_t samples = (this->nbits_ + 1) * 2;                                           // sync + nbits
+  uint32_t search_end = src.size() > samples ? src.size() - samples + 1 : src.size();  // last possible sync + 1
+  uint32_t search_limit = std::min(search_end, samples * 3 / 2);                       // limit search
 
   while (src.get_index() < search_limit) {
     if (this->receive_item_(src, this->sync_high_, this->sync_low_)) {
@@ -44,9 +44,9 @@ optional<RcSwitchButBetterData> RcSwitchButBetterProtocol::decode(RemoteReceiveD
 
   src.reset();
 
-  samples = this->nbits_ * 2;                                      // nbits
-  search_end = src.size() > samples ? src.size() - samples : 0ul;  // last possible sync + 1
-  search_limit = std::min(search_end, samples * 3 / 2);            // limit search
+  samples = this->nbits_ * 2;                                                 // nbits
+  search_end = src.size() > samples ? src.size() - samples + 1 : src.size();  // last possible start without sync + 1
+  search_limit = std::min(search_end, samples * 3 / 2);                       // limit search
 
   while (src.get_index() < search_limit) {
     if (this->receive_code_(src)) {
@@ -84,7 +84,8 @@ void RcSwitchButBetterProtocol::dump(const RcSwitchButBetterData &data) { ESP_LO
 
 bool RcSwitchButBetterProtocol::receive_item_(RemoteReceiveData &src, uint32_t high, uint32_t low) const {
   if (!this->is_inverted_()) {
-    ESP_LOGV(TAG, "receive_item %d %d %d %d", (int) src.peek(0), (int) src.peek_mark(high, 0), (int) src.peek(1), (int) src.peek_space(low, 1));
+    ESP_LOGV(TAG, "receive_item %d %d %d %d", (int) src.peek(0), (int) src.peek_mark(high, 0), (int) src.peek(1),
+             (int) src.peek_space(low, 1));
     if (!(this->is_ppm_() ? src.peek_mark_at_most(high, 0) : src.peek_mark(high, 0)))
       return false;
     if (!src.peek_space(low, 1))
