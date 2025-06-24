@@ -2114,6 +2114,7 @@ async def Toto_action(var, config, args):
 # RC Switch BUT BETTER
 
 CONF_SIGNAL_TYPE = "signal_type"
+CONF_NBITS_MIN = "nbits_min"
 
 RC_SWITCH_BUT_BETTER_TIMING_SCHEMA = cv.All([cv.uint8_t], cv.Length(min=2, max=2))
 
@@ -2129,6 +2130,8 @@ RC_SWITCH_BUT_BETTER_PROTOCOL_SCHEMA = cv.Schema(
         cv.Optional(CONF_SIGNAL_TYPE, default="PWM"): cv.one_of(
             "PWM", "PPM", upper=True
         ),
+        cv.Optional(CONF_NBITS, default=64): cv.uint16_t,
+        cv.Optional(CONF_NBITS_MIN, default=1): cv.uint16_t,
     }
 )
 
@@ -2159,6 +2162,8 @@ def build_rc_switch_but_better_protocol(config):
         config[CONF_INVERTED],
         config[CONF_REVERSED],
         config[CONF_SIGNAL_TYPE],
+        config[CONF_NBITS],
+        config[CONF_NBITS_MIN],
     )
 
 
@@ -2177,6 +2182,7 @@ RCSwitchButBetterAction = ns.class_(
 RcSwitchButBetterBinarySensor = ns.class_(
     "RcSwitchButBetterBinarySensor", RemoteReceiverBinarySensorBase
 )
+RCSwitchButBetterDumper = ns.class_("RcSwitchButBetterDumper", RemoteReceiverDumperBase)
 
 
 @register_binary_sensor(
@@ -2201,3 +2207,12 @@ async def rc_switch_but_better_action(var, config, args):
     )
     cg.add(var.set_protocol(proto))
     cg.add(var.set_code(await cg.templatable(config[CONF_CODE], args, cg.std_string)))
+
+
+@register_dumper(
+    "rc_switch_but_better",
+    RCSwitchButBetterDumper,
+    RC_SWITCH_BUT_BETTER_PROTOCOL_SCHEMA,
+)
+def rc_switch_but_better_dumper(var, config):
+    cg.add(var.set_protocol(build_rc_switch_but_better_protocol(config)))
