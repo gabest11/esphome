@@ -24,14 +24,15 @@ optional<RcSwitchButBetterData> RcSwitchButBetterProtocol::decode(RemoteReceiveD
 
   while (src.get_index() < search_limit) {
     if (this->receive_item_(src, this->sync_high_, this->sync_low_)) {
-      if (this->receive_code_(src)) {
-        ESP_LOGD(TAG, "receive @%" PRIu32 " %" PRIx64 " (%d)", src.get_index(), *(uint64_t *) &this->code_[0],
-                 this->nbits_);
+      uint16_t nbits = this->receive_code_(src);
+      if (nbits > 0) {
+        ESP_LOGV(TAG, "receive @%" PRIu32 " %" PRIx64 " (%d)", src.get_index(), *(uint64_t *) &this->code_[0], nbits);
         // found something, extend search till the end
         search_limit = search_end;
         // transform may also return false if it needs more packets to complete data
+        data.resize(nbits);
         if (this->to_data(data)) {
-          ESP_LOGD(TAG, "%s", data.c_str());
+          ESP_LOGV(TAG, "%s", data.c_str());
           return data;
         }
       }
@@ -49,14 +50,15 @@ optional<RcSwitchButBetterData> RcSwitchButBetterProtocol::decode(RemoteReceiveD
   search_limit = std::min(search_end, samples * 3 / 2);                       // limit search
 
   while (src.get_index() < search_limit) {
-    if (this->receive_code_(src)) {
-      ESP_LOGD(TAG, "receive @%" PRIu32 " %" PRIx64 " (%d)", src.get_index(), *(uint64_t *) &this->code_[0],
-               this->nbits_);
+    uint16_t nbits = this->receive_code_(src);
+    if (nbits > 0) {
+      ESP_LOGV(TAG, "receive @%" PRIu32 " %" PRIx64 " (%d)", src.get_index(), *(uint64_t *) &this->code_[0], nbits);
       // found something, extend search till the end
       search_limit = search_end;
       // transform may also return false if it needs more packets to complete data
+      data.resize(nbits);
       if (this->to_data(data)) {
-        ESP_LOGD(TAG, "%s", data.c_str());
+        ESP_LOGV(TAG, "%s", data.c_str());
         return data;
       }
     } else {
@@ -72,7 +74,7 @@ void RcSwitchButBetterProtocol::encode(RemoteTransmitData *dst, const RcSwitchBu
   this->code_.resize(std::max((this->nbits_ + 7) >> 3, 8), 0);
 
   if (this->to_code(data)) {
-    ESP_LOGD(TAG, "encode %s", data.c_str());
+    ESP_LOGV(TAG, "encode %s", data.c_str());
     dst->set_carrier_frequency(38000);  // TODO: channel?
     for (int i = 0; i < this->repeat_; i++) {
       this->transmit_code_(dst);
@@ -80,7 +82,9 @@ void RcSwitchButBetterProtocol::encode(RemoteTransmitData *dst, const RcSwitchBu
   }
 }
 
-void RcSwitchButBetterProtocol::dump(const RcSwitchButBetterData &data) { ESP_LOGI(TAG, "%s", data.c_str()); }
+void RcSwitchButBetterProtocol::dump(const RcSwitchButBetterData &data) {
+  ESP_LOGI(TAG, "%s (%d)", data.c_str(), data.size());
+}
 
 bool RcSwitchButBetterProtocol::receive_item_(RemoteReceiveData &src, uint32_t high, uint32_t low) const {
   if (!this->is_inverted_()) {
@@ -108,7 +112,7 @@ bool RcSwitchButBetterProtocol::receive_item_(RemoteReceiveData &src, uint32_t h
   return true;
 }
 
-bool RcSwitchButBetterProtocol::receive_code_(RemoteReceiveData &src) {
+uint16_t RcSwitchButBetterProtocol::receive_code_(RemoteReceiveData &src) {
   uint16_t nbits = 0;
 
   while (nbits < this->nbits_ && src.get_index() < src.size() - 1) {
@@ -121,7 +125,7 @@ bool RcSwitchButBetterProtocol::receive_code_(RemoteReceiveData &src) {
     } else if (this->receive_item_(src, this->one_high_, this->one_low_)) {
       dst |= bit;
     } else if (0 < this->nbits_min_ && this->nbits_min_ <= nbits) {
-      return true;
+      return nbits;
     } else {
       break;
     }
@@ -133,17 +137,17 @@ bool RcSwitchButBetterProtocol::receive_code_(RemoteReceiveData &src) {
         uint32_t index = src.get_index();
         if (this->receive_item_(src, this->zero_high_, this->zero_low_) ||
             this->receive_item_(src, this->one_high_, this->one_low_)) {
-          ESP_LOGD(TAG, "ignore %" PRIx64 " (%d)", *(uint64_t *) &this->code_[0], (int) nbits);
+          ESP_LOGV(TAG, "ignore %" PRIx64 " (%d)", *(uint64_t *) &this->code_[0], (int) nbits);
           src.reset();
           src.advance(index);
           break;
         }
       }
-      return true;
+      return nbits;
     }
   }
 
-  return false;
+  return 0;
 }
 
 void RcSwitchButBetterProtocol::transmit_item_(RemoteTransmitData *dst, uint32_t high, uint32_t low) const {
@@ -204,7 +208,6 @@ void RcSwitchButBetterProtocol::set_bits_(uint16_t pos, uint8_t nbits, uint32_t 
 }
 
 bool RcSwitchButBetterProtocol::to_data(RcSwitchButBetterData &data) const {
-  data.resize(this->nbits_);
   for (size_t i = 0; i < data.size(); i++) {
     data[i] = (this->code_[i >> 3] & (1 << (i & 7))) ? '1' : '0';
   }
