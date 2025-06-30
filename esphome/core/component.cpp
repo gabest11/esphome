@@ -60,7 +60,15 @@ void Component::set_interval(const std::string &name, uint32_t interval, std::fu
   App.scheduler.set_interval(this, name, interval, std::move(f));
 }
 
+void Component::set_interval(const char *name, uint32_t interval, std::function<void()> &&f) {  // NOLINT
+  App.scheduler.set_interval(this, name, interval, std::move(f));
+}
+
 bool Component::cancel_interval(const std::string &name) {  // NOLINT
+  return App.scheduler.cancel_interval(this, name);
+}
+
+bool Component::cancel_interval(const char *name) {  // NOLINT
   return App.scheduler.cancel_interval(this, name);
 }
 
@@ -77,7 +85,15 @@ void Component::set_timeout(const std::string &name, uint32_t timeout, std::func
   App.scheduler.set_timeout(this, name, timeout, std::move(f));
 }
 
+void Component::set_timeout(const char *name, uint32_t timeout, std::function<void()> &&f) {  // NOLINT
+  App.scheduler.set_timeout(this, name, timeout, std::move(f));
+}
+
 bool Component::cancel_timeout(const std::string &name) {  // NOLINT
+  return App.scheduler.cancel_timeout(this, name);
+}
+
+bool Component::cancel_timeout(const char *name) {  // NOLINT
   return App.scheduler.cancel_timeout(this, name);
 }
 
@@ -149,7 +165,7 @@ void Component::mark_failed() {
 }
 void Component::disable_loop() {
   if ((this->component_state_ & COMPONENT_STATE_MASK) != COMPONENT_STATE_LOOP_DONE) {
-    ESP_LOGD(TAG, "%s loop disabled", this->get_component_source());
+    ESP_LOGVV(TAG, "%s loop disabled", this->get_component_source());
     this->component_state_ &= ~COMPONENT_STATE_MASK;
     this->component_state_ |= COMPONENT_STATE_LOOP_DONE;
     App.disable_component_loop_(this);
@@ -157,7 +173,7 @@ void Component::disable_loop() {
 }
 void Component::enable_loop() {
   if ((this->component_state_ & COMPONENT_STATE_MASK) == COMPONENT_STATE_LOOP_DONE) {
-    ESP_LOGD(TAG, "%s loop enabled", this->get_component_source());
+    ESP_LOGVV(TAG, "%s loop enabled", this->get_component_source());
     this->component_state_ &= ~COMPONENT_STATE_MASK;
     this->component_state_ |= COMPONENT_STATE_LOOP;
     App.enable_component_loop_(this);
@@ -189,7 +205,7 @@ bool Component::is_in_loop_state() const {
   return (this->component_state_ & COMPONENT_STATE_MASK) == COMPONENT_STATE_LOOP;
 }
 void Component::defer(std::function<void()> &&f) {  // NOLINT
-  App.scheduler.set_timeout(this, "", 0, std::move(f));
+  App.scheduler.set_timeout(this, static_cast<const char *>(nullptr), 0, std::move(f));
 }
 bool Component::cancel_defer(const std::string &name) {  // NOLINT
   return App.scheduler.cancel_timeout(this, name);

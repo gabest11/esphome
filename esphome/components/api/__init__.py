@@ -110,9 +110,10 @@ CONFIG_SCHEMA = cv.All(
             ): ACTIONS_SCHEMA,
             cv.Exclusive(CONF_ACTIONS, group_of_exclusion=CONF_ACTIONS): ACTIONS_SCHEMA,
             cv.Optional(CONF_ENCRYPTION): _encryption_schema,
-            cv.Optional(
-                CONF_BATCH_DELAY, default="100ms"
-            ): cv.positive_time_period_milliseconds,
+            cv.Optional(CONF_BATCH_DELAY, default="100ms"): cv.All(
+                cv.positive_time_period_milliseconds,
+                cv.Range(max=cv.TimePeriod(milliseconds=65535)),
+            ),
             cv.Optional(CONF_ON_CLIENT_CONNECTED): automation.validate_automation(
                 single=True
             ),
@@ -135,23 +136,26 @@ async def to_code(config):
     cg.add(var.set_reboot_timeout(config[CONF_REBOOT_TIMEOUT]))
     cg.add(var.set_batch_delay(config[CONF_BATCH_DELAY]))
 
-    for conf in config.get(CONF_ACTIONS, []):
-        template_args = []
-        func_args = []
-        service_arg_names = []
-        for name, var_ in conf[CONF_VARIABLES].items():
-            native = SERVICE_ARG_NATIVE_TYPES[var_]
-            template_args.append(native)
-            func_args.append((native, name))
-            service_arg_names.append(name)
-        templ = cg.TemplateArguments(*template_args)
-        trigger = cg.new_Pvariable(
-            conf[CONF_TRIGGER_ID], templ, conf[CONF_ACTION], service_arg_names
-        )
-        cg.add(var.register_user_service(trigger))
-        await automation.build_automation(trigger, func_args, conf)
+    if actions := config.get(CONF_ACTIONS, []):
+        cg.add_define("USE_API_YAML_SERVICES")
+        for conf in actions:
+            template_args = []
+            func_args = []
+            service_arg_names = []
+            for name, var_ in conf[CONF_VARIABLES].items():
+                native = SERVICE_ARG_NATIVE_TYPES[var_]
+                template_args.append(native)
+                func_args.append((native, name))
+                service_arg_names.append(name)
+            templ = cg.TemplateArguments(*template_args)
+            trigger = cg.new_Pvariable(
+                conf[CONF_TRIGGER_ID], templ, conf[CONF_ACTION], service_arg_names
+            )
+            cg.add(var.register_user_service(trigger))
+            await automation.build_automation(trigger, func_args, conf)
 
     if CONF_ON_CLIENT_CONNECTED in config:
+        cg.add_define("USE_API_CLIENT_CONNECTED_TRIGGER")
         await automation.build_automation(
             var.get_client_connected_trigger(),
             [(cg.std_string, "client_info"), (cg.std_string, "client_address")],
@@ -159,6 +163,7 @@ async def to_code(config):
         )
 
     if CONF_ON_CLIENT_DISCONNECTED in config:
+        cg.add_define("USE_API_CLIENT_DISCONNECTED_TRIGGER")
         await automation.build_automation(
             var.get_client_disconnected_trigger(),
             [(cg.std_string, "client_info"), (cg.std_string, "client_address")],

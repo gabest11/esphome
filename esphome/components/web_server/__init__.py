@@ -28,6 +28,7 @@ from esphome.const import (
     PLATFORM_BK72XX,
     PLATFORM_ESP32,
     PLATFORM_ESP8266,
+    PLATFORM_LN882X,
     PLATFORM_RTL87XX,
 )
 from esphome.core import CORE, coroutine_with_priority
@@ -180,6 +181,7 @@ CONFIG_SCHEMA = cv.All(
                 esp32_arduino=True,
                 esp32_idf=False,
                 bk72xx=True,
+                ln882x=True,
                 rtl87xx=True,
             ): cv.boolean,
             cv.Optional(CONF_LOG, default=True): cv.boolean,
@@ -187,7 +189,15 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_SORTING_GROUPS): cv.ensure_list(sorting_group),
         }
     ).extend(cv.COMPONENT_SCHEMA),
-    cv.only_on([PLATFORM_ESP32, PLATFORM_ESP8266, PLATFORM_BK72XX, PLATFORM_RTL87XX]),
+    cv.only_on(
+        [
+            PLATFORM_ESP32,
+            PLATFORM_ESP8266,
+            PLATFORM_BK72XX,
+            PLATFORM_LN882X,
+            PLATFORM_RTL87XX,
+        ]
+    ),
     default_url,
     validate_local,
     validate_ota,
@@ -211,6 +221,7 @@ async def add_entity_config(entity, config):
     sorting_weight = config.get(CONF_SORTING_WEIGHT, 50)
     sorting_group_hash = hash(config.get(CONF_SORTING_GROUP_ID))
 
+    cg.add_define("USE_WEBSERVER_SORTING")
     cg.add(
         web_server.add_entity_config(
             entity,
@@ -296,4 +307,5 @@ async def to_code(config):
         cg.add_define("USE_WEBSERVER_LOCAL")
 
     if (sorting_group_config := config.get(CONF_SORTING_GROUPS)) is not None:
+        cg.add_define("USE_WEBSERVER_SORTING")
         add_sorting_groups(var, sorting_group_config)
