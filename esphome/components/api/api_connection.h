@@ -18,6 +18,8 @@ namespace api {
 
 // Keepalive timeout in milliseconds
 static constexpr uint32_t KEEPALIVE_TIMEOUT_MS = 60000;
+// Maximum number of entities to process in a single batch during initial state/info sending
+static constexpr size_t MAX_INITIAL_PER_BATCH = 20;
 
 class APIConnection : public APIServerConnection {
  public:
@@ -296,6 +298,20 @@ class APIConnection : public APIServerConnection {
   static uint16_t encode_message_to_buffer(ProtoMessage &msg, uint16_t message_type, APIConnection *conn,
                                            uint32_t remaining_size, bool is_single);
 
+  // Helper method to process multiple entities from an iterator in a batch
+  template<typename Iterator> void process_iterator_batch_(Iterator &iterator) {
+    size_t initial_size = this->deferred_batch_.size();
+    while (!iterator.completed() && (this->deferred_batch_.size() - initial_size) < MAX_INITIAL_PER_BATCH) {
+      iterator.advance();
+    }
+
+    // If the batch is full, process it immediately
+    // Note: iterator.advance() already calls schedule_batch_() via schedule_message_()
+    if (this->deferred_batch_.size() >= MAX_INITIAL_PER_BATCH) {
+      this->process_batch_();
+    }
+  }
+
 #ifdef USE_BINARY_SENSOR
   static uint16_t try_send_binary_sensor_state(EntityBase *entity, APIConnection *conn, uint32_t remaining_size,
                                                bool is_single);
@@ -451,96 +467,53 @@ class APIConnection : public APIServerConnection {
   // Function pointer type for message encoding
   using MessageCreatorPtr = uint16_t (*)(EntityBase *, APIConnection *, uint32_t remaining_size, bool is_single);
 
-  // Optimized MessageCreator class using tagged pointer
   class MessageCreator {
-    // Ensure pointer alignment allows LSB tagging
-    static_assert(alignof(std::string *) > 1, "String pointer alignment must be > 1 for LSB tagging");
-
    public:
     // Constructor for function pointer
-    MessageCreator(MessageCreatorPtr ptr) {
-      // Function pointers are always aligned, so LSB is 0
-      data_.ptr = ptr;
-    }
+    MessageCreator(MessageCreatorPtr ptr) { data_.function_ptr = ptr; }
 
     // Constructor for string state capture
-    explicit MessageCreator(const std::string &str_value) {
-      // Allocate string and tag the pointer
-      auto *str = new std::string(str_value);
-      // Set LSB to 1 to indicate string pointer
-      data_.tagged = reinterpret_cast<uintptr_t>(str) | 1;
-    }
+    explicit MessageCreator(const std::string &str_value) { data_.string_ptr = new std::string(str_value); }
 
-    // Destructor
-    ~MessageCreator() {
-      if (has_tagged_string_ptr_()) {
-        delete get_string_ptr_();
-      }
-    }
+    // No destructor - cleanup must be called explicitly with message_type
 
-    // Copy constructor
-    MessageCreator(const MessageCreator &other) {
-      if (other.has_tagged_string_ptr_()) {
-        auto *str = new std::string(*other.get_string_ptr_());
-        data_.tagged = reinterpret_cast<uintptr_t>(str) | 1;
-      } else {
-        data_ = other.data_;
-      }
-    }
+    // Delete copy operations - MessageCreator should only be moved
+    MessageCreator(const MessageCreator &other) = delete;
+    MessageCreator &operator=(const MessageCreator &other) = delete;
 
     // Move constructor
-    MessageCreator(MessageCreator &&other) noexcept : data_(other.data_) { other.data_.ptr = nullptr; }
+    MessageCreator(MessageCreator &&other) noexcept : data_(other.data_) { other.data_.function_ptr = nullptr; }
 
-    // Assignment operators (needed for batch deduplication)
-    MessageCreator &operator=(const MessageCreator &other) {
-      if (this != &other) {
-        // Clean up current string data if needed
-        if (has_tagged_string_ptr_()) {
-          delete get_string_ptr_();
-        }
-        // Copy new data
-        if (other.has_tagged_string_ptr_()) {
-          auto *str = new std::string(*other.get_string_ptr_());
-          data_.tagged = reinterpret_cast<uintptr_t>(str) | 1;
-        } else {
-          data_ = other.data_;
-        }
-      }
-      return *this;
-    }
-
+    // Move assignment
     MessageCreator &operator=(MessageCreator &&other) noexcept {
       if (this != &other) {
-        // Clean up current string data if needed
-        if (has_tagged_string_ptr_()) {
-          delete get_string_ptr_();
-        }
-        // Move data
+        // IMPORTANT: Caller must ensure cleanup() was called if this contains a string!
+        // In our usage, this happens in add_item() deduplication and vector::erase()
         data_ = other.data_;
-        // Reset other to safe state
-        other.data_.ptr = nullptr;
+        other.data_.function_ptr = nullptr;
       }
       return *this;
     }
 
-    // Call operator - now accepts message_type as parameter
+    // Call operator - uses message_type to determine union type
     uint16_t operator()(EntityBase *entity, APIConnection *conn, uint32_t remaining_size, bool is_single,
                         uint16_t message_type) const;
 
-   private:
-    // Check if this contains a string pointer
-    bool has_tagged_string_ptr_() const { return (data_.tagged & 1) != 0; }
-
-    // Get the actual string pointer (clears the tag bit)
-    std::string *get_string_ptr_() const {
-      // NOLINTNEXTLINE(performance-no-int-to-ptr)
-      return reinterpret_cast<std::string *>(data_.tagged & ~uintptr_t(1));
+    // Manual cleanup method - must be called before destruction for string types
+    void cleanup(uint16_t message_type) {
+#ifdef USE_EVENT
+      if (message_type == EventResponse::MESSAGE_TYPE && data_.string_ptr != nullptr) {
+        delete data_.string_ptr;
+        data_.string_ptr = nullptr;
+      }
+#endif
     }
 
-    union {
-      MessageCreatorPtr ptr;
-      uintptr_t tagged;
-    } data_;  // 4 bytes on 32-bit
+   private:
+    union Data {
+      MessageCreatorPtr function_ptr;
+      std::string *string_ptr;
+    } data_;  // 4 bytes on 32-bit, 8 bytes on 64-bit - same as before
   };
 
   // Generic batching mechanism for both state updates and entity info
@@ -558,20 +531,46 @@ class APIConnection : public APIServerConnection {
     std::vector<BatchItem> items;
     uint32_t batch_start_time{0};
 
+   private:
+    // Helper to cleanup items from the beginning
+    void cleanup_items_(size_t count) {
+      for (size_t i = 0; i < count; i++) {
+        items[i].creator.cleanup(items[i].message_type);
+      }
+    }
+
+   public:
     DeferredBatch() {
       // Pre-allocate capacity for typical batch sizes to avoid reallocation
       items.reserve(8);
+    }
+
+    ~DeferredBatch() {
+      // Ensure cleanup of any remaining items
+      clear();
     }
 
     // Add item to the batch
     void add_item(EntityBase *entity, MessageCreator creator, uint16_t message_type);
     // Add item to the front of the batch (for high priority messages like ping)
     void add_item_front(EntityBase *entity, MessageCreator creator, uint16_t message_type);
+
+    // Clear all items with proper cleanup
     void clear() {
+      cleanup_items_(items.size());
       items.clear();
       batch_start_time = 0;
     }
+
+    // Remove processed items from the front with proper cleanup
+    void remove_front(size_t count) {
+      cleanup_items_(count);
+      items.erase(items.begin(), items.begin() + count);
+    }
+
     bool empty() const { return items.empty(); }
+    size_t size() const { return items.size(); }
+    const BatchItem &operator[](size_t index) const { return items[index]; }
   };
 
   // DeferredBatch here (16 bytes, 4-byte aligned)
@@ -599,7 +598,8 @@ class APIConnection : public APIServerConnection {
     uint8_t service_call_subscription : 1;
     uint8_t next_close : 1;
     uint8_t batch_scheduled : 1;
-    uint8_t batch_first_message : 1;  // For batch buffer allocation
+    uint8_t batch_first_message : 1;          // For batch buffer allocation
+    uint8_t should_try_send_immediately : 1;  // True after initial states are sent
 #ifdef HAS_PROTO_MESSAGE_DUMP
     uint8_t log_only_mode : 1;
 #endif
@@ -626,10 +626,49 @@ class APIConnection : public APIServerConnection {
 
   bool schedule_batch_();
   void process_batch_();
+  void clear_batch_() {
+    this->deferred_batch_.clear();
+    this->flags_.batch_scheduled = false;
+  }
 
 #ifdef HAS_PROTO_MESSAGE_DUMP
-  void log_batch_item_(const DeferredBatch::BatchItem &item);
+  // Helper to log a proto message from a MessageCreator object
+  void log_proto_message_(EntityBase *entity, const MessageCreator &creator, uint16_t message_type) {
+    this->flags_.log_only_mode = true;
+    creator(entity, this, MAX_PACKET_SIZE, true, message_type);
+    this->flags_.log_only_mode = false;
+  }
+
+  void log_batch_item_(const DeferredBatch::BatchItem &item) {
+    // Use the helper to log the message
+    this->log_proto_message_(item.entity, item.creator, item.message_type);
+  }
 #endif
+
+  // Helper method to send a message either immediately or via batching
+  bool send_message_smart_(EntityBase *entity, MessageCreatorPtr creator, uint16_t message_type) {
+    // Try to send immediately if:
+    // 1. We should try to send immediately (should_try_send_immediately = true)
+    // 2. Batch delay is 0 (user has opted in to immediate sending)
+    // 3. Buffer has space available
+    if (this->flags_.should_try_send_immediately && this->get_batch_delay_ms_() == 0 &&
+        this->helper_->can_write_without_blocking()) {
+      // Now actually encode and send
+      if (creator(entity, this, MAX_PACKET_SIZE, true) &&
+          this->send_buffer(ProtoWriteBuffer{&this->parent_->get_shared_buffer_ref()}, message_type)) {
+#ifdef HAS_PROTO_MESSAGE_DUMP
+        // Log the message in verbose mode
+        this->log_proto_message_(entity, MessageCreator(creator), message_type);
+#endif
+        return true;
+      }
+
+      // If immediate send failed, fall through to batching
+    }
+
+    // Fall back to scheduled batching
+    return this->schedule_message_(entity, creator, message_type);
+  }
 
   // Helper function to schedule a deferred message with known message type
   bool schedule_message_(EntityBase *entity, MessageCreator creator, uint16_t message_type) {
