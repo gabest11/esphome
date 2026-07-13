@@ -5,8 +5,7 @@
 
 #include "weikai_i2c.h"
 
-namespace esphome {
-namespace weikai_i2c {
+namespace esphome::weikai_i2c {
 static const char *const TAG = "weikai_i2c";
 
 /// @brief Display a buffer in hexadecimal format (32 hex values / line).
@@ -142,8 +141,7 @@ void WeikaiRegisterI2C::write_fifo(uint8_t *data, size_t length) {
 void WeikaiComponentI2C::setup() {
   // before any manipulation we store the address to base_address_ for future use
   this->base_address_ = this->address_;
-  ESP_LOGCONFIG(TAG, "Running setup for '%s' with %d UARTs at @%02X", this->get_name(), this->children_.size(),
-                this->base_address_);
+  ESP_LOGCONFIG(TAG, "Setup %s (%d UARTs) @ 0x%02X", this->get_name(), this->children_.size(), this->base_address_);
 
   // enable all channels
   this->reg(WKREG_GENA, 0) = GENA_C1EN | GENA_C2EN | GENA_C3EN | GENA_C4EN;
@@ -178,5 +176,4 @@ void WeikaiComponentI2C::dump_config() {
   }
 }
 
-}  // namespace weikai_i2c
-}  // namespace esphome
+}  // namespace esphome::weikai_i2c

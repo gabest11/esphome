@@ -3,8 +3,7 @@
 #include "esphome/core/hal.h"
 #include <cinttypes>
 
-namespace esphome {
-namespace servo {
+namespace esphome::servo {
 
 static const char *const TAG = "servo";
 
@@ -87,10 +86,10 @@ void Servo::write(float value) {
 void Servo::internal_write(float value) {
   value = clamp(value, -1.0f, 1.0f);
   float level;
-  if (value < 0.0) {
-    level = lerp(-value, this->idle_level_, this->min_level_);
+  if (value < 0.0f) {
+    level = std::lerp(this->idle_level_, this->min_level_, -value);
   } else {
-    level = lerp(value, this->idle_level_, this->max_level_);
+    level = std::lerp(this->idle_level_, this->max_level_, value);
   }
   this->output_->set_level(level);
   this->current_value_ = value;
@@ -106,5 +105,4 @@ void Servo::save_level_(float v) {
     this->rtc_.save(&v);
 }
 
-}  // namespace servo
-}  // namespace esphome
+}  // namespace esphome::servo

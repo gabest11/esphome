@@ -2,8 +2,7 @@
 #include "esphome/core/hal.h"
 #include "esphome/core/log.h"
 
-namespace esphome {
-namespace grove_gas_mc_v2 {
+namespace esphome::grove_gas_mc_v2 {
 
 static const char *const TAG = "grove_gas_mc_v2";
 
@@ -33,7 +32,6 @@ bool GroveGasMultichannelV2Component::read_sensor_(uint8_t address, sensor::Sens
 }
 
 void GroveGasMultichannelV2Component::setup() {
-  ESP_LOGCONFIG(TAG, "Running setup");
   // Before reading sensor values, must preheat sensor
   if (!(this->write_bytes(GROVE_GAS_MC_V2_HEAT_ON, {}))) {
     this->mark_failed();
@@ -58,11 +56,11 @@ void GroveGasMultichannelV2Component::update() {
 void GroveGasMultichannelV2Component::dump_config() {
   ESP_LOGCONFIG(TAG, "Grove Multichannel Gas Sensor V2");
   LOG_I2C_DEVICE(this)
-  LOG_UPDATE_INTERVAL(this)
-  LOG_SENSOR("  ", "Nitrogen Dioxide", this->nitrogen_dioxide_sensor_)
-  LOG_SENSOR("  ", "Ethanol", this->ethanol_sensor_)
-  LOG_SENSOR("  ", "Carbon Monoxide", this->carbon_monoxide_sensor_)
-  LOG_SENSOR("  ", "TVOC", this->tvoc_sensor_)
+  LOG_UPDATE_INTERVAL(this);
+  LOG_SENSOR("  ", "Nitrogen Dioxide", this->nitrogen_dioxide_sensor_);
+  LOG_SENSOR("  ", "Ethanol", this->ethanol_sensor_);
+  LOG_SENSOR("  ", "Carbon Monoxide", this->carbon_monoxide_sensor_);
+  LOG_SENSOR("  ", "TVOC", this->tvoc_sensor_);
 
   if (this->is_failed()) {
     switch (this->error_code_) {
@@ -83,5 +81,4 @@ void GroveGasMultichannelV2Component::dump_config() {
   }
 }
 
-}  // namespace grove_gas_mc_v2
-}  // namespace esphome
+}  // namespace esphome::grove_gas_mc_v2

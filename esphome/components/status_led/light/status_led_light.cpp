@@ -3,8 +3,7 @@
 #include "esphome/core/application.h"
 #include <cinttypes>
 
-namespace esphome {
-namespace status_led {
+namespace esphome::status_led {
 
 static const char *const TAG = "status_led";
 
@@ -53,8 +52,6 @@ void StatusLEDLightOutput::write_state(light::LightState *state) {
 }
 
 void StatusLEDLightOutput::setup() {
-  ESP_LOGCONFIG(TAG, "Running setup");
-
   if (this->pin_ != nullptr) {
     this->pin_->setup();
     this->pin_->digital_write(false);
@@ -73,5 +70,4 @@ void StatusLEDLightOutput::output_state_(bool state) {
     this->output_->set_state(state);
 }
 
-}  // namespace status_led
-}  // namespace esphome
+}  // namespace esphome::status_led

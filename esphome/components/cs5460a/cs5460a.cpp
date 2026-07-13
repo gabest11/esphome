@@ -1,8 +1,7 @@
 #include "cs5460a.h"
 #include "esphome/core/log.h"
 
-namespace esphome {
-namespace cs5460a {
+namespace esphome::cs5460a {
 
 static const char *const TAG = "cs5460a";
 
@@ -52,8 +51,6 @@ bool CS5460AComponent::softreset_() {
 }
 
 void CS5460AComponent::setup() {
-  ESP_LOGCONFIG(TAG, "Running setup");
-
   float current_full_scale = (pga_gain_ == CS5460A_PGA_GAIN_10X) ? 0.25 : 0.10;
   float voltage_full_scale = 0.25;
   current_multiplier_ = current_full_scale / (fabsf(current_gain_) * 0x1000000);
@@ -341,5 +338,4 @@ void CS5460AComponent::dump_config() {
   LOG_SENSOR("  ", "Power", power_sensor_);
 }
 
-}  // namespace cs5460a
-}  // namespace esphome
+}  // namespace esphome::cs5460a

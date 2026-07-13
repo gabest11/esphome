@@ -2,8 +2,7 @@
 #include "esphome/core/log.h"
 #include "esphome/core/hal.h"
 
-namespace esphome {
-namespace ina3221 {
+namespace esphome::ina3221 {
 
 static const char *const TAG = "ina3221";
 
@@ -22,7 +21,6 @@ static const uint8_t INA3221_REGISTER_CHANNEL3_BUS_VOLTAGE = 0x06;
 // A0 = SCL -> 0x43
 
 void INA3221Component::setup() {
-  ESP_LOGCONFIG(TAG, "Running setup");
   // Config Register
   // 0bx000000000000000 << 15 RESET Bit (1 -> trigger reset)
   if (!this->write_byte_16(INA3221_REGISTER_CONFIG, 0x8000)) {
@@ -114,7 +112,6 @@ void INA3221Component::update() {
   }
 }
 
-float INA3221Component::get_setup_priority() const { return setup_priority::DATA; }
 void INA3221Component::set_shunt_resistance(int channel, float resistance_ohm) {
   this->channels_[channel].shunt_resistance_ = resistance_ohm;
 }
@@ -130,5 +127,4 @@ bool INA3221Component::INA3221Channel::should_measure_bus_voltage() {
   return this->bus_voltage_sensor_ != nullptr || this->power_sensor_ != nullptr;
 }
 
-}  // namespace ina3221
-}  // namespace esphome
+}  // namespace esphome::ina3221

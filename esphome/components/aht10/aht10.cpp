@@ -17,8 +17,7 @@
 #include "esphome/core/helpers.h"
 #include "esphome/core/log.h"
 
-namespace esphome {
-namespace aht10 {
+namespace esphome::aht10 {
 
 static const char *const TAG = "aht10";
 static const uint8_t AHT10_INITIALIZE_CMD[] = {0xE1, 0x08, 0x00};
@@ -38,8 +37,6 @@ static const uint8_t AHT10_STATUS_BUSY = 0x80;
 static const float AHT10_DIVISOR = 1048576.0f;  // 2^20, used for temperature and humidity calculations
 
 void AHT10Component::setup() {
-  ESP_LOGCONFIG(TAG, "Running setup");
-
   if (this->write(AHT10_SOFTRESET_CMD, sizeof(AHT10_SOFTRESET_CMD)) != i2c::ERROR_OK) {
     ESP_LOGE(TAG, "Reset failed");
   }
@@ -80,14 +77,12 @@ void AHT10Component::setup() {
     this->mark_failed();
     return;
   }
-
-  ESP_LOGV(TAG, "Initialization complete");
 }
 
 void AHT10Component::restart_read_() {
   if (this->read_count_ == AHT10_ATTEMPTS) {
     this->read_count_ = 0;
-    this->status_set_error("Reading timed out");
+    this->status_set_error(LOG_STR("Reading timed out"));
     return;
   }
   this->read_count_++;
@@ -100,7 +95,7 @@ void AHT10Component::read_data_() {
     ESP_LOGD(TAG, "Read attempt %d at %ums", this->read_count_, (unsigned) (millis() - this->start_time_));
   }
   if (this->read(data, 6) != i2c::ERROR_OK) {
-    this->status_set_warning("Read failed, will retry");
+    this->status_set_warning(LOG_STR("Read failed, will retry"));
     this->restart_read_();
     return;
   }
@@ -117,7 +112,7 @@ void AHT10Component::read_data_() {
     } else {
       ESP_LOGD(TAG, "Invalid humidity, retrying");
       if (this->write(AHT10_MEASURE_CMD, sizeof(AHT10_MEASURE_CMD)) != i2c::ERROR_OK) {
-        this->status_set_warning(ESP_LOG_MSG_COMM_FAIL);
+        this->status_set_warning(LOG_STR(ESP_LOG_MSG_COMM_FAIL));
       }
       this->restart_read_();
       return;
@@ -148,13 +143,11 @@ void AHT10Component::update() {
     return;
   this->start_time_ = millis();
   if (this->write(AHT10_MEASURE_CMD, sizeof(AHT10_MEASURE_CMD)) != i2c::ERROR_OK) {
-    this->status_set_warning(ESP_LOG_MSG_COMM_FAIL);
+    this->status_set_warning(LOG_STR(ESP_LOG_MSG_COMM_FAIL));
     return;
   }
   this->restart_read_();
 }
-
-float AHT10Component::get_setup_priority() const { return setup_priority::DATA; }
 
 void AHT10Component::dump_config() {
   ESP_LOGCONFIG(TAG, "AHT10:");
@@ -166,5 +159,4 @@ void AHT10Component::dump_config() {
   LOG_SENSOR("  ", "Humidity", this->humidity_sensor_);
 }
 
-}  // namespace aht10
-}  // namespace esphome
+}  // namespace esphome::aht10

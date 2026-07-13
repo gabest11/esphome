@@ -1,14 +1,11 @@
 #include "qwiic_pir.h"
 #include "esphome/core/log.h"
 
-namespace esphome {
-namespace qwiic_pir {
+namespace esphome::qwiic_pir {
 
 static const char *const TAG = "qwiic_pir";
 
 void QwiicPIRComponent::setup() {
-  ESP_LOGCONFIG(TAG, "Running setup");
-
   // Verify I2C communcation by reading and verifying the chip ID
   uint8_t chip_id;
   if (!this->read_byte(QWIIC_PIR_CHIP_ID, &chip_id)) {
@@ -131,5 +128,4 @@ void QwiicPIRComponent::clear_events_() {
     ESP_LOGW(TAG, "Failed to clear events");
 }
 
-}  // namespace qwiic_pir
-}  // namespace esphome
+}  // namespace esphome::qwiic_pir

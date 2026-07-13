@@ -1,13 +1,11 @@
 #include "ssd1327_i2c.h"
 #include "esphome/core/log.h"
 
-namespace esphome {
-namespace ssd1327_i2c {
+namespace esphome::ssd1327_i2c {
 
 static const char *const TAG = "ssd1327_i2c";
 
 void I2CSSD1327::setup() {
-  ESP_LOGCONFIG(TAG, "Running setup");
   this->init_reset_();
 
   auto err = this->write(nullptr, 0);
@@ -40,5 +38,4 @@ void HOT I2CSSD1327::write_display_data() {
   }
 }
 
-}  // namespace ssd1327_i2c
-}  // namespace esphome
+}  // namespace esphome::ssd1327_i2c

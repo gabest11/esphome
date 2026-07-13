@@ -5,8 +5,7 @@
 #include "esphome/core/helpers.h"
 #include "esphome/core/log.h"
 
-namespace esphome {
-namespace apds9306 {
+namespace esphome::apds9306 {
 
 static const char *const TAG = "apds9306";
 
@@ -54,8 +53,6 @@ enum {  // APDS9306 registers
   }
 
 void APDS9306::setup() {
-  ESP_LOGCONFIG(TAG, "Running setup");
-
   uint8_t id;
   if (!this->read_byte(APDS9306_PART_ID, &id)) {  // Part ID register
     this->error_code_ = COMMUNICATION_FAILED;
@@ -86,8 +83,6 @@ void APDS9306::setup() {
 
   // Set to active mode
   APDS9306_WRITE_BYTE(APDS9306_MAIN_CTRL, 0x02);
-
-  ESP_LOGCONFIG(TAG, "APDS9306 setup complete");
 }
 
 void APDS9306::dump_config() {
@@ -151,5 +146,4 @@ void APDS9306::update() {
   this->publish_state(lux);
 }
 
-}  // namespace apds9306
-}  // namespace esphome
+}  // namespace esphome::apds9306

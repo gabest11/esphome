@@ -2,13 +2,11 @@
 #include "esphome/core/log.h"
 #include "esphome/core/hal.h"
 
-namespace esphome {
-namespace sen0321_sensor {
+namespace esphome::sen0321_sensor {
 
 static const char *const TAG = "sen0321_sensor.sensor";
 
 void Sen0321Sensor::setup() {
-  ESP_LOGCONFIG(TAG, "Running setup");
   if (!this->write_byte(SENSOR_MODE_REGISTER, SENSOR_MODE_AUTO)) {
     ESP_LOGW(TAG, "Error setting measurement mode.");
     this->mark_failed();
@@ -32,5 +30,4 @@ void Sen0321Sensor::read_data_() {
   this->publish_state(((uint16_t) (result[0] << 8) + result[1]));
 }
 
-}  // namespace sen0321_sensor
-}  // namespace esphome
+}  // namespace esphome::sen0321_sensor

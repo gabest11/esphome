@@ -5,8 +5,7 @@
 #include "esphome/core/log.h"
 #include "emc2101.h"
 
-namespace esphome {
-namespace emc2101 {
+namespace esphome::emc2101 {
 
 static const char *const TAG = "EMC2101";
 
@@ -57,8 +56,6 @@ static const uint8_t EMC2101_POLARITY_BIT = 1 << 4;
 float Emc2101Component::get_setup_priority() const { return setup_priority::HARDWARE; }
 
 void Emc2101Component::setup() {
-  ESP_LOGCONFIG(TAG, "Running setup");
-
   // make sure we're talking to the right chip
   uint8_t chip_id = reg(EMC2101_REGISTER_WHOAMI).get();
   if ((chip_id != EMC2101_CHIP_ID) && (chip_id != EMC2101_ALT_CHIP_ID)) {
@@ -74,7 +71,7 @@ void Emc2101Component::setup() {
     config |= EMC2101_DAC_BIT;
   }
   if (this->inverted_) {
-    config |= EMC2101_POLARITY_BIT;
+    reg(EMC2101_REGISTER_FAN_CONFIG) |= EMC2101_POLARITY_BIT;
   }
 
   if (this->dac_mode_) {  // DAC mode configurations
@@ -167,5 +164,4 @@ float Emc2101Component::get_speed() {
   return tach == 0xFFFF ? 0.0f : 5400000.0f / tach;
 }
 
-}  // namespace emc2101
-}  // namespace esphome
+}  // namespace esphome::emc2101

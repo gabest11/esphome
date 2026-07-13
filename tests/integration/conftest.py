@@ -5,12 +5,14 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncGenerator, Callable, Generator
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
+import fcntl
 import logging
 import os
 from pathlib import Path
 import platform
 import signal
 import socket
+import subprocess
 import sys
 import tempfile
 from typing import TextIO
@@ -21,7 +23,7 @@ import pytest_asyncio
 
 import esphome.config
 from esphome.core import CORE
-from esphome.platformio_api import get_idedata
+from esphome.platformio.toolchain import get_idedata
 
 from .const import (
     API_CONNECTION_TIMEOUT,
@@ -48,6 +50,67 @@ if platform.system() == "Windows":
 
 
 import pty  # not available on Windows
+
+# Register assert rewrite for entity_utils so assertions have proper error messages
+pytest.register_assert_rewrite("tests.integration.entity_utils")
+
+
+def _get_platformio_env(cache_dir: Path) -> dict[str, str]:
+    """Get environment variables for PlatformIO with shared cache."""
+    env = os.environ.copy()
+    env["PLATFORMIO_CORE_DIR"] = str(cache_dir)
+    env["PLATFORMIO_CACHE_DIR"] = str(cache_dir / ".cache")
+    env["PLATFORMIO_LIBDEPS_DIR"] = str(cache_dir / "libdeps")
+    # Prevent cache cleaning during integration tests
+    env["ESPHOME_SKIP_CLEAN_BUILD"] = "1"
+    return env
+
+
+@pytest.fixture(scope="session")
+def shared_platformio_cache() -> Generator[Path]:
+    """Initialize a shared PlatformIO cache for all integration tests."""
+    # Use a dedicated directory for integration tests to avoid conflicts
+    test_cache_dir = Path.home() / ".esphome-integration-tests"
+    cache_dir = test_cache_dir / "platformio"
+
+    # Use a lock file in the home directory to ensure only one process initializes the cache
+    # This is needed when running with pytest-xdist
+    # The lock file must be in a directory that already exists to avoid race conditions
+    lock_file = Path.home() / ".esphome-integration-tests-init.lock"
+
+    # Always acquire the lock to ensure cache is ready before proceeding
+    with lock_file.open("w") as lock_fd:
+        fcntl.flock(lock_fd.fileno(), fcntl.LOCK_EX)
+
+        # Check if the native platform is installed (the actual indicator of a populated cache)
+        native_platform = cache_dir / "platforms" / "native"
+        if not native_platform.exists():
+            # Create the test cache directory if it doesn't exist
+            test_cache_dir.mkdir(exist_ok=True)
+
+            with tempfile.TemporaryDirectory() as tmpdir:
+                # Use the cache_init fixture for initialization
+                init_dir = Path(tmpdir)
+                fixture_path = Path(__file__).parent / "fixtures" / "cache_init.yaml"
+                config_path = init_dir / "cache_init.yaml"
+                config_path.write_text(fixture_path.read_text())
+
+                # Run compilation to populate the cache
+                # We must succeed here to avoid race conditions where multiple
+                # tests try to populate the same cache directory simultaneously
+                env = _get_platformio_env(cache_dir)
+
+                subprocess.run(
+                    ["esphome", "compile", str(config_path)],
+                    check=True,
+                    cwd=init_dir,
+                    env=env,
+                    close_fds=False,
+                )
+
+        # Lock is held until here, ensuring cache is fully populated before any test proceeds
+
+    yield cache_dir
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -121,19 +184,26 @@ async def yaml_config(request: pytest.FixtureRequest, unused_tcp_port: int) -> s
         content = content.replace("api:", f"api:\n  port: {unused_tcp_port}")
 
     # Add debug build flags for integration tests to enable assertions
-    if "esphome:" in content:
-        # Check if platformio_options already exists
-        if "platformio_options:" not in content:
-            # Add platformio_options with debug flags after esphome:
-            content = content.replace(
-                "esphome:",
-                "esphome:\n"
-                "  # Enable assertions for integration tests\n"
-                "  platformio_options:\n"
-                "    build_flags:\n"
-                '      - "-DDEBUG"  # Enable assert() statements\n'
-                '      - "-g"       # Add debug symbols',
-            )
+    if "esphome:" in content and "platformio_options:" not in content:
+        # Add platformio_options with debug flags after esphome:
+        content = content.replace(
+            "esphome:",
+            "esphome:\n"
+            "  # Enable assertions for integration tests\n"
+            "  platformio_options:\n"
+            "    build_flags:\n"
+            '      - "-DDEBUG"  # Enable assert() statements\n'
+            '      - "-DESPHOME_DEBUG"  # Enable ESPHOME_DEBUG_ASSERT checks\n'
+            '      - "-DESPHOME_DEBUG_API"  # Enable API protocol asserts\n'
+            '      - "-g"       # Add debug symbols',
+        )
+
+    # Replace external component path placeholder if present
+    if "EXTERNAL_COMPONENT_PATH" in content:
+        external_components_path = str(
+            Path(__file__).parent / "fixtures" / "external_components"
+        )
+        content = content.replace("EXTERNAL_COMPONENT_PATH", external_components_path)
 
     return content
 
@@ -161,10 +231,15 @@ async def write_yaml_config(
 @pytest_asyncio.fixture
 async def compile_esphome(
     integration_test_dir: Path,
+    shared_platformio_cache: Path,
 ) -> AsyncGenerator[CompileFunction]:
     """Compile an ESPHome configuration and return the binary path."""
 
     async def _compile(config_path: Path) -> Path:
+        # Use the shared PlatformIO cache for faster compilation
+        # This avoids re-downloading dependencies for each test
+        env = _get_platformio_env(shared_platformio_cache)
+
         # Retry compilation up to 3 times if we get a segfault
         max_retries = 3
         for attempt in range(max_retries):
@@ -179,32 +254,33 @@ async def compile_esphome(
                 stdin=asyncio.subprocess.DEVNULL,
                 # Start in a new process group to isolate signal handling
                 start_new_session=True,
+                env=env,
+                close_fds=False,
             )
             await proc.wait()
 
             if proc.returncode == 0:
                 # Success!
                 break
-            elif proc.returncode == -11 and attempt < max_retries - 1:
+            if proc.returncode == -11 and attempt < max_retries - 1:
                 # Segfault (-11 = SIGSEGV), retry
                 print(
                     f"Compilation segfaulted (attempt {attempt + 1}/{max_retries}), retrying..."
                 )
                 await asyncio.sleep(1)  # Brief pause before retry
                 continue
-            else:
-                # Other error or final retry
-                raise RuntimeError(
-                    f"Failed to compile {config_path}, return code: {proc.returncode}. "
-                    f"Run with 'pytest -s' to see compilation output."
-                )
+            # Other error or final retry
+            raise RuntimeError(
+                f"Failed to compile {config_path}, return code: {proc.returncode}. "
+                f"Run with 'pytest -s' to see compilation output."
+            )
 
         # Load the config to get idedata (blocking call, must use executor)
         loop = asyncio.get_running_loop()
 
         def _read_config_and_get_binary():
             CORE.reset()  # Reset CORE state between test runs
-            CORE.config_path = str(config_path)
+            CORE.config_path = config_path
             config = esphome.config.read_config(
                 {"command": "compile", "config": str(config_path)}
             )
@@ -279,7 +355,8 @@ async def wait_and_connect_api_client(
     noise_psk: str | None = None,
     client_info: str = "integration-test",
     timeout: float = API_CONNECTION_TIMEOUT,
-) -> AsyncGenerator[APIClient]:
+    return_disconnect_event: bool = False,
+) -> AsyncGenerator[APIClient | tuple[APIClient, asyncio.Event]]:
     """Wait for API to be available and connect."""
     client = APIClient(
         address=address,
@@ -292,14 +369,17 @@ async def wait_and_connect_api_client(
     # Create a future to signal when connected
     loop = asyncio.get_running_loop()
     connected_future: asyncio.Future[None] = loop.create_future()
+    disconnect_event = asyncio.Event()
 
     async def on_connect() -> None:
         """Called when successfully connected."""
+        disconnect_event.clear()  # Clear the disconnect event on new connection
         if not connected_future.done():
             connected_future.set_result(None)
 
     async def on_disconnect(expected_disconnect: bool) -> None:
         """Called when disconnected."""
+        disconnect_event.set()
         if not connected_future.done() and not expected_disconnect:
             connected_future.set_exception(
                 APIConnectionError("Disconnected before fully connected")
@@ -327,10 +407,15 @@ async def wait_and_connect_api_client(
         # Wait for connection with timeout
         try:
             await asyncio.wait_for(connected_future, timeout=timeout)
-        except asyncio.TimeoutError:
-            raise TimeoutError(f"Failed to connect to API after {timeout} seconds")
+        except TimeoutError as err:
+            raise TimeoutError(
+                f"Failed to connect to API after {timeout} seconds"
+            ) from err
 
-        yield client
+        if return_disconnect_event:
+            yield client, disconnect_event
+        else:
+            yield client
     finally:
         # Stop reconnect logic and disconnect
         await reconnect_logic.stop()
@@ -363,6 +448,33 @@ async def api_client_connected(
     yield _connect_client
 
 
+@pytest_asyncio.fixture
+async def api_client_connected_with_disconnect(
+    unused_tcp_port: int,
+) -> AsyncGenerator:
+    """Factory for creating connected API client context managers with disconnect event."""
+
+    def _connect_client_with_disconnect(
+        address: str = LOCALHOST,
+        port: int | None = None,
+        password: str = "",
+        noise_psk: str | None = None,
+        client_info: str = "integration-test",
+        timeout: float = API_CONNECTION_TIMEOUT,
+    ):
+        return wait_and_connect_api_client(
+            address=address,
+            port=port if port is not None else unused_tcp_port,
+            password=password,
+            noise_psk=noise_psk,
+            client_info=client_info,
+            timeout=timeout,
+            return_disconnect_event=True,
+        )
+
+    yield _connect_client_with_disconnect
+
+
 async def _read_stream_lines(
     stream: asyncio.StreamReader,
     lines: list[str],
@@ -391,14 +503,15 @@ async def _read_stream_lines(
 
 
 @asynccontextmanager
-async def run_binary_and_wait_for_port(
+async def run_binary(
     binary_path: Path,
-    host: str,
-    port: int,
-    timeout: float = PORT_WAIT_TIMEOUT,
     line_callback: Callable[[str], None] | None = None,
-) -> AsyncGenerator[None]:
-    """Run a binary, wait for it to open a port, and clean up on exit."""
+) -> AsyncGenerator[tuple[asyncio.subprocess.Process, list[str]]]:
+    """Run a binary under a PTY, capture log output, and clean up on exit.
+
+    Yields the running ``Process`` and a live list of captured log lines.
+    No port wait -- callers that need that should use
+    ``run_binary_and_wait_for_port``."""
     # Create a pseudo-terminal to make the binary think it's running interactively
     # This is needed because the ESPHome host logger checks isatty()
     controller_fd, device_fd = pty.openpty()
@@ -412,6 +525,7 @@ async def run_binary_and_wait_for_port(
         # Start in a new process group to isolate signal handling
         start_new_session=True,
         pass_fds=(device_fd,),
+        close_fds=False,
     )
 
     # Close the device end in the parent process
@@ -424,7 +538,6 @@ async def run_binary_and_wait_for_port(
     controller_transport, _ = await loop.connect_read_pipe(
         lambda: controller_protocol, os.fdopen(controller_fd, "rb", 0)
     )
-    output_reader = controller_reader
 
     if process.returncode is not None:
         raise RuntimeError(
@@ -432,27 +545,59 @@ async def run_binary_and_wait_for_port(
             "Ensure the binary is valid and can run successfully."
         )
 
-    # Wait for the API server to start listening
-    loop = asyncio.get_running_loop()
-    start_time = loop.time()
-
-    # Start collecting output
     stdout_lines: list[str] = []
-    output_tasks: list[asyncio.Task] = []
+    output_task = asyncio.create_task(
+        _read_stream_lines(controller_reader, stdout_lines, sys.stdout, line_callback)
+    )
 
     try:
-        # Read from output stream
-        output_tasks = [
-            asyncio.create_task(
-                _read_stream_lines(
-                    output_reader, stdout_lines, sys.stdout, line_callback
-                )
-            )
-        ]
-
         # Small yield to ensure the process has a chance to start
         await asyncio.sleep(0)
+        yield process, stdout_lines
+    finally:
+        output_task.cancel()
+        result = await asyncio.gather(output_task, return_exceptions=True)
+        if isinstance(result[0], Exception) and not isinstance(
+            result[0], asyncio.CancelledError
+        ):
+            print(f"Error reading from PTY: {result[0]}", file=sys.stderr)
 
+        # Close the PTY transport (Unix only)
+        if controller_transport is not None:
+            controller_transport.close()
+
+        # Cleanup: terminate the process gracefully
+        if process.returncode is None:
+            # Send SIGINT (Ctrl+C) for graceful shutdown
+            process.send_signal(signal.SIGINT)
+            try:
+                await asyncio.wait_for(process.wait(), timeout=SIGINT_TIMEOUT)
+            except TimeoutError:
+                # If SIGINT didn't work, try SIGTERM
+                process.terminate()
+                try:
+                    await asyncio.wait_for(process.wait(), timeout=SIGTERM_TIMEOUT)
+                except TimeoutError:
+                    # Last resort: SIGKILL
+                    process.kill()
+                    await process.wait()
+
+
+@asynccontextmanager
+async def run_binary_and_wait_for_port(
+    binary_path: Path,
+    host: str,
+    port: int,
+    timeout: float = PORT_WAIT_TIMEOUT,
+    line_callback: Callable[[str], None] | None = None,
+) -> AsyncGenerator[None]:
+    """Run a binary, wait for it to open a port, and clean up on exit."""
+    async with run_binary(binary_path, line_callback=line_callback) as (
+        process,
+        stdout_lines,
+    ):
+        loop = asyncio.get_running_loop()
+        start_time = loop.time()
         while loop.time() - start_time < timeout:
             try:
                 # Try to connect to the port
@@ -481,41 +626,6 @@ async def run_binary_and_wait_for_port(
             error_msg += "\n".join(stdout_lines[-100:])  # Last 100 lines
 
         raise TimeoutError(error_msg)
-
-    finally:
-        # Cancel output collection tasks
-        for task in output_tasks:
-            task.cancel()
-        # Wait for tasks to complete and check for exceptions
-        results = await asyncio.gather(*output_tasks, return_exceptions=True)
-        for i, result in enumerate(results):
-            if isinstance(result, Exception) and not isinstance(
-                result, asyncio.CancelledError
-            ):
-                print(
-                    f"Error reading from PTY: {result}",
-                    file=sys.stderr,
-                )
-
-        # Close the PTY transport (Unix only)
-        if controller_transport is not None:
-            controller_transport.close()
-
-        # Cleanup: terminate the process gracefully
-        if process.returncode is None:
-            # Send SIGINT (Ctrl+C) for graceful shutdown
-            process.send_signal(signal.SIGINT)
-            try:
-                await asyncio.wait_for(process.wait(), timeout=SIGINT_TIMEOUT)
-            except asyncio.TimeoutError:
-                # If SIGINT didn't work, try SIGTERM
-                process.terminate()
-                try:
-                    await asyncio.wait_for(process.wait(), timeout=SIGTERM_TIMEOUT)
-                except asyncio.TimeoutError:
-                    # Last resort: SIGKILL
-                    process.kill()
-                    await process.wait()
 
 
 @asynccontextmanager

@@ -1,8 +1,8 @@
 #include "max9611.h"
 #include "esphome/core/log.h"
 #include "esphome/components/i2c/i2c_bus.h"
-namespace esphome {
-namespace max9611 {
+
+namespace esphome::max9611 {
 using namespace esphome::i2c;
 // Sign extend
 // http://graphics.stanford.edu/~seander/bithacks.html#FixedSignExtend
@@ -31,7 +31,6 @@ static const float TEMP_LSB = 0.48;           // 0.48C/LSB
 static const float MICRO_VOLTS_PER_VOLT = 1000000.0;
 
 void MAX9611Component::setup() {
-  ESP_LOGCONFIG(TAG, "Running setup");
   // Perform dummy-read
   uint8_t value;
   this->read(&value, 1);
@@ -92,5 +91,4 @@ void MAX9611Component::update() {
 
   ESP_LOGD(TAG, "V: %f, A: %f, W: %f, Deg C: %f", voltage, amps, watts, temp);
 }
-}  // namespace max9611
-}  // namespace esphome
+}  // namespace esphome::max9611

@@ -6,8 +6,7 @@
 #include <Wire.h>
 #endif
 
-namespace esphome {
-namespace scd30 {
+namespace esphome::scd30 {
 
 static const char *const TAG = "scd30";
 
@@ -26,8 +25,6 @@ static const uint16_t SCD30_CMD_TEMPERATURE_OFFSET = 0x5403;
 static const uint16_t SCD30_CMD_SOFT_RESET = 0xD304;
 
 void SCD30Component::setup() {
-  ESP_LOGCONFIG(TAG, "Running setup");
-
 #ifdef USE_ESP8266
   Wire.setClockStretchLimit(150000);
 #endif
@@ -224,7 +221,7 @@ bool SCD30Component::force_recalibration_with_reference(uint16_t co2_reference) 
 }
 
 uint16_t SCD30Component::get_forced_calibration_reference() {
-  uint16_t forced_calibration_reference;
+  uint16_t forced_calibration_reference = 0;
   // Get current CO2 calibration
   if (!this->get_register(SCD30_CMD_FORCED_CALIBRATION, forced_calibration_reference)) {
     ESP_LOGE(TAG, "Unable to read forced calibration reference.");
@@ -232,5 +229,4 @@ uint16_t SCD30Component::get_forced_calibration_reference() {
   return forced_calibration_reference;
 }
 
-}  // namespace scd30
-}  // namespace esphome
+}  // namespace esphome::scd30

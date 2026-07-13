@@ -4,8 +4,7 @@
 #include "esphome/core/log.h"
 #include <cinttypes>
 
-namespace esphome {
-namespace es8311 {
+namespace esphome::es8311 {
 
 static const char *const TAG = "es8311";
 
@@ -22,8 +21,6 @@ static const char *const TAG = "es8311";
   }
 
 void ES8311::setup() {
-  ESP_LOGCONFIG(TAG, "Running setup");
-
   // Reset
   ES8311_ERROR_FAILED(this->write_byte(ES8311_REG00_RESET, 0x1F));
   ES8311_ERROR_FAILED(this->write_byte(ES8311_REG00_RESET, 0x00));
@@ -225,5 +222,4 @@ bool ES8311::set_mute_state_(bool mute_state) {
   return this->write_byte(ES8311_REG31_DAC, reg31);
 }
 
-}  // namespace es8311
-}  // namespace esphome
+}  // namespace esphome::es8311

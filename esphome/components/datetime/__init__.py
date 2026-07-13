@@ -21,8 +21,12 @@ from esphome.const import (
     CONF_WEB_SERVER,
     CONF_YEAR,
 )
-from esphome.core import CORE, coroutine_with_priority
-from esphome.core.entity_helpers import entity_duplicate_validator, setup_entity
+from esphome.core import CORE, CoroPriority, coroutine_with_priority
+from esphome.core.entity_helpers import (
+    entity_duplicate_validator,
+    queue_entity_register,
+    setup_entity,
+)
 from esphome.cpp_generator import MockObjClass
 
 CODEOWNERS = ["@rfdarter", "@jesserockz"]
@@ -134,9 +138,8 @@ def datetime_schema(class_: MockObjClass) -> cv.Schema:
     return _DATETIME_SCHEMA.extend(schema)
 
 
+@setup_entity("datetime")
 async def setup_datetime_core_(var, config):
-    await setup_entity(var, config, "datetime")
-
     if (mqtt_id := config.get(CONF_MQTT_ID)) is not None:
         mqtt_ = cg.new_Pvariable(mqtt_id, var)
         await mqtt.register_mqtt_component(mqtt_, config)
@@ -161,10 +164,9 @@ async def register_datetime(var, config):
     if not CORE.has_id(config[CONF_ID]):
         var = cg.Pvariable(config[CONF_ID], var)
     entity_type = config[CONF_TYPE].lower()
-    cg.add(getattr(cg.App, f"register_{entity_type}")(var))
+    queue_entity_register(entity_type, config)
     CORE.register_platform_component(entity_type, var)
     await setup_datetime_core_(var, config)
-    cg.add_define(f"USE_DATETIME_{config[CONF_TYPE]}")
 
 
 async def new_datetime(config, *args):
@@ -173,9 +175,8 @@ async def new_datetime(config, *args):
     return var
 
 
-@coroutine_with_priority(100.0)
+@coroutine_with_priority(CoroPriority.CORE)
 async def to_code(config):
-    cg.add_define("USE_DATETIME")
     cg.add_global(datetime_ns.using)
 
 
@@ -190,6 +191,7 @@ async def to_code(config):
             ),
         }
     ),
+    synchronous=True,
 )
 async def datetime_date_set_to_code(config, action_id, template_arg, args):
     action_var = cg.new_Pvariable(action_id, template_arg)
@@ -206,7 +208,8 @@ async def datetime_date_set_to_code(config, action_id, template_arg, args):
             ("month", date_config[CONF_MONTH]),
             ("year", date_config[CONF_YEAR]),
         )
-        cg.add(action_var.set_date(date_struct))
+        template_ = await cg.templatable(date_struct, args, cg.ESPTime)
+        cg.add(action_var.set_date(template_))
     return action_var
 
 
@@ -221,6 +224,7 @@ async def datetime_date_set_to_code(config, action_id, template_arg, args):
             ),
         }
     ),
+    synchronous=True,
 )
 async def datetime_time_set_to_code(config, action_id, template_arg, args):
     action_var = cg.new_Pvariable(action_id, template_arg)
@@ -237,7 +241,8 @@ async def datetime_time_set_to_code(config, action_id, template_arg, args):
             ("minute", time_config[CONF_MINUTE]),
             ("hour", time_config[CONF_HOUR]),
         )
-        cg.add(action_var.set_time(time_struct))
+        template_ = await cg.templatable(time_struct, args, cg.ESPTime)
+        cg.add(action_var.set_time(template_))
     return action_var
 
 
@@ -252,6 +257,7 @@ async def datetime_time_set_to_code(config, action_id, template_arg, args):
             ),
         },
     ),
+    synchronous=True,
 )
 async def datetime_datetime_set_to_code(config, action_id, template_arg, args):
     action_var = cg.new_Pvariable(action_id, template_arg)
@@ -271,5 +277,6 @@ async def datetime_datetime_set_to_code(config, action_id, template_arg, args):
             ("month", datetime_config[CONF_MONTH]),
             ("year", datetime_config[CONF_YEAR]),
         )
-        cg.add(action_var.set_datetime(datetime_struct))
+        template_ = await cg.templatable(datetime_struct, args, cg.ESPTime)
+        cg.add(action_var.set_datetime(template_))
     return action_var

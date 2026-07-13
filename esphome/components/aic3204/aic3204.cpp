@@ -4,8 +4,7 @@
 #include "esphome/core/helpers.h"
 #include "esphome/core/log.h"
 
-namespace esphome {
-namespace aic3204 {
+namespace esphome::aic3204 {
 
 static const char *const TAG = "aic3204";
 
@@ -17,8 +16,6 @@ static const char *const TAG = "aic3204";
   }
 
 void AIC3204::setup() {
-  ESP_LOGCONFIG(TAG, "Running setup");
-
   // Set register page to 0
   ERROR_CHECK(this->write_byte(AIC3204_PAGE_CTRL, 0x00), "Set page 0 failed");
   // Initiate SW reset (PLL is powered off as part of reset)
@@ -169,5 +166,4 @@ bool AIC3204::write_volume_() {
   return true;
 }
 
-}  // namespace aic3204
-}  // namespace esphome
+}  // namespace esphome::aic3204

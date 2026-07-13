@@ -2,29 +2,23 @@
 #include "esphome/core/helpers.h"
 #include "esphome/core/log.h"
 
-namespace esphome {
-namespace veml3235 {
+namespace esphome::veml3235 {
 
 static const char *const TAG = "veml3235.sensor";
 
 void VEML3235Sensor::setup() {
   uint8_t device_id[] = {0, 0};
-
-  ESP_LOGCONFIG(TAG, "Running setup for '%s'", this->name_.c_str());
-
   if (!this->refresh_config_reg()) {
     ESP_LOGE(TAG, "Unable to write configuration");
     this->mark_failed();
     return;
   }
-  if ((this->write(&ID_REG, 1, false) != i2c::ERROR_OK) || !this->read_bytes_raw(device_id, 2)) {
+  if ((this->read_register(ID_REG, device_id, sizeof device_id) != i2c::ERROR_OK)) {
     ESP_LOGE(TAG, "Unable to read ID");
     this->mark_failed();
-    return;
   } else if (device_id[0] != DEVICE_ID) {
     ESP_LOGE(TAG, "Incorrect device ID - expected 0x%.2x, read 0x%.2x", DEVICE_ID, device_id[0]);
     this->mark_failed();
-    return;
   }
 }
 
@@ -52,7 +46,7 @@ float VEML3235Sensor::read_lx_() {
   }
 
   uint8_t als_regs[] = {0, 0};
-  if ((this->write(&ALS_REG, 1, false) != i2c::ERROR_OK) || !this->read_bytes_raw(als_regs, 2)) {
+  if ((this->read_register(ALS_REG, als_regs, sizeof als_regs) != i2c::ERROR_OK)) {
     this->status_set_warning();
     return NAN;
   }
@@ -221,7 +215,7 @@ void VEML3235Sensor::dump_config() {
                   "  Auto-gain upper threshold: %f%%\n"
                   "  Auto-gain lower threshold: %f%%\n"
                   "  Values below will be used as initial values only",
-                  this->auto_gain_threshold_high_ * 100.0, this->auto_gain_threshold_low_ * 100.0);
+                  this->auto_gain_threshold_high_ * 100.0f, this->auto_gain_threshold_low_ * 100.0f);
   }
   ESP_LOGCONFIG(TAG,
                 "  Digital gain: %uX\n"
@@ -230,5 +224,4 @@ void VEML3235Sensor::dump_config() {
                 digital_gain, gain, integration_time);
 }
 
-}  // namespace veml3235
-}  // namespace esphome
+}  // namespace esphome::veml3235

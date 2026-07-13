@@ -1,8 +1,7 @@
 #include "opt3001.h"
 #include "esphome/core/log.h"
 
-namespace esphome {
-namespace opt3001 {
+namespace esphome::opt3001 {
 
 static const char *const TAG = "opt3001.sensor";
 
@@ -72,7 +71,7 @@ void OPT3001Sensor::read_lx_(const std::function<void(float)> &f) {
   }
 
   this->set_timeout("read", OPT3001_CONVERSION_TIME_800, [this, f]() {
-    if (this->write(&OPT3001_REG_CONFIGURATION, 1, true) != i2c::ERROR_OK) {
+    if (this->write(&OPT3001_REG_CONFIGURATION, 1) != i2c::ERROR_OK) {
       ESP_LOGW(TAG, "Starting configuration register read failed");
       f(NAN);
       return;
@@ -116,7 +115,4 @@ void OPT3001Sensor::update() {
   });
 }
 
-float OPT3001Sensor::get_setup_priority() const { return setup_priority::DATA; }
-
-}  // namespace opt3001
-}  // namespace esphome
+}  // namespace esphome::opt3001

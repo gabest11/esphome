@@ -1,8 +1,7 @@
 #include "as5600.h"
 #include "esphome/core/log.h"
 
-namespace esphome {
-namespace as5600 {
+namespace esphome::as5600 {
 
 static const char *const TAG = "as5600";
 
@@ -23,8 +22,6 @@ static const uint8_t REGISTER_AGC = 0x1A;        // 8 bytes  / R
 static const uint8_t REGISTER_MAGNITUDE = 0x1B;  // 16 bytes / R
 
 void AS5600Component::setup() {
-  ESP_LOGCONFIG(TAG, "Running setup");
-
   if (!this->read_byte(REGISTER_STATUS).has_value()) {
     this->mark_failed();
     return;
@@ -136,5 +133,4 @@ optional<uint16_t> AS5600Component::read_raw_position() {
   return pos;
 }
 
-}  // namespace as5600
-}  // namespace esphome
+}  // namespace esphome::as5600

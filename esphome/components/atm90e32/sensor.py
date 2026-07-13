@@ -17,10 +17,13 @@ from esphome.const import (
     CONF_REACTIVE_POWER,
     CONF_REVERSE_ACTIVE_ENERGY,
     CONF_VOLTAGE,
+    DEVICE_CLASS_APPARENT_POWER,
     DEVICE_CLASS_CURRENT,
     DEVICE_CLASS_ENERGY,
+    DEVICE_CLASS_FREQUENCY,
     DEVICE_CLASS_POWER,
     DEVICE_CLASS_POWER_FACTOR,
+    DEVICE_CLASS_REACTIVE_POWER,
     DEVICE_CLASS_TEMPERATURE,
     DEVICE_CLASS_VOLTAGE,
     ENTITY_CATEGORY_DIAGNOSTIC,
@@ -100,13 +103,13 @@ ATM90E32_PHASE_SCHEMA = cv.Schema(
             unit_of_measurement=UNIT_VOLT_AMPS_REACTIVE,
             icon=ICON_LIGHTBULB,
             accuracy_decimals=2,
-            device_class=DEVICE_CLASS_POWER,
+            device_class=DEVICE_CLASS_REACTIVE_POWER,
             state_class=STATE_CLASS_MEASUREMENT,
         ),
         cv.Optional(CONF_APPARENT_POWER): sensor.sensor_schema(
             unit_of_measurement=UNIT_VOLT_AMPS,
             accuracy_decimals=2,
-            device_class=DEVICE_CLASS_POWER,
+            device_class=DEVICE_CLASS_APPARENT_POWER,
             state_class=STATE_CLASS_MEASUREMENT,
         ),
         cv.Optional(CONF_POWER_FACTOR): sensor.sensor_schema(
@@ -129,7 +132,6 @@ ATM90E32_PHASE_SCHEMA = cv.Schema(
         cv.Optional(CONF_PHASE_ANGLE): sensor.sensor_schema(
             unit_of_measurement=UNIT_DEGREES,
             accuracy_decimals=2,
-            device_class=DEVICE_CLASS_POWER,
             state_class=STATE_CLASS_MEASUREMENT,
         ),
         cv.Optional(CONF_HARMONIC_POWER): sensor.sensor_schema(
@@ -164,6 +166,7 @@ CONFIG_SCHEMA = (
                 unit_of_measurement=UNIT_HERTZ,
                 icon=ICON_CURRENT_AC,
                 accuracy_decimals=1,
+                device_class=DEVICE_CLASS_FREQUENCY,
                 state_class=STATE_CLASS_MEASUREMENT,
             ),
             cv.Optional(CONF_CHIP_TEMPERATURE): sensor.sensor_schema(
@@ -190,6 +193,7 @@ CONFIG_SCHEMA = (
 
 async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
+    cg.add(var.set_instance_id(str(config[CONF_ID])))
     await cg.register_component(var, config)
     await spi.register_spi_device(var, config)
 

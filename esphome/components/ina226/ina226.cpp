@@ -3,8 +3,7 @@
 #include "esphome/core/hal.h"
 #include <cinttypes>
 
-namespace esphome {
-namespace ina226 {
+namespace esphome::ina226 {
 
 static const char *const TAG = "ina226";
 
@@ -37,8 +36,6 @@ static const uint16_t INA226_ADC_TIMES[] = {140, 204, 332, 588, 1100, 2116, 4156
 static const uint16_t INA226_ADC_AVG_SAMPLES[] = {1, 4, 16, 64, 128, 256, 512, 1024};
 
 void INA226Component::setup() {
-  ESP_LOGCONFIG(TAG, "Running setup");
-
   ConfigurationRegister config;
 
   config.reset = 1;
@@ -73,7 +70,7 @@ void INA226Component::setup() {
 
   this->calibration_lsb_ = lsb;
 
-  auto calibration = uint32_t(0.00512 / (lsb * this->shunt_resistance_ohm_ / 1000000.0f));
+  auto calibration = uint32_t(0.00512f / (lsb * this->shunt_resistance_ohm_ / 1000000.0f));
 
   ESP_LOGV(TAG, "    Using LSB=%" PRIu32 " calibration=%" PRIu32, lsb, calibration);
 
@@ -105,8 +102,6 @@ void INA226Component::dump_config() {
   LOG_SENSOR("  ", "Current", this->current_sensor_);
   LOG_SENSOR("  ", "Power", this->power_sensor_);
 }
-
-float INA226Component::get_setup_priority() const { return setup_priority::DATA; }
 
 void INA226Component::update() {
   if (this->bus_voltage_sensor_ != nullptr) {
@@ -165,5 +160,4 @@ int32_t INA226Component::twos_complement_(int32_t val, uint8_t bits) {
   return val;
 }
 
-}  // namespace ina226
-}  // namespace esphome
+}  // namespace esphome::ina226

@@ -3,8 +3,7 @@
 #include "esphome/core/log.h"
 #include <cstring>
 
-namespace esphome {
-namespace pmsa003i {
+namespace esphome::pmsa003i {
 
 static const char *const TAG = "pmsa003i";
 
@@ -19,8 +18,6 @@ static const uint8_t START_CHARACTER_2 = 0x4D;
 static const uint8_t READ_DATA_RETRY_COUNT = 3;
 
 void PMSA003IComponent::setup() {
-  ESP_LOGCONFIG(TAG, "Running setup");
-
   PM25AQIData data;
   bool successful_read = this->read_data_(&data);
 
@@ -133,5 +130,4 @@ bool PMSA003IComponent::read_data_(PM25AQIData *data) {
   return true;
 }
 
-}  // namespace pmsa003i
-}  // namespace esphome
+}  // namespace esphome::pmsa003i

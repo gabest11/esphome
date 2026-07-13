@@ -1,8 +1,7 @@
 #include "sts3x.h"
 #include "esphome/core/log.h"
 
-namespace esphome {
-namespace sts3x {
+namespace esphome::sts3x {
 
 static const char *const TAG = "sts3x";
 
@@ -18,7 +17,6 @@ static const uint16_t STS3X_COMMAND_HEATER_DISABLE = 0x3066;
 static const uint16_t STS3X_COMMAND_FETCH_DATA = 0xE000;
 
 void STS3XComponent::setup() {
-  ESP_LOGCONFIG(TAG, "Running setup");
   if (!this->write_command(STS3X_COMMAND_READ_SERIAL_NUMBER)) {
     this->mark_failed();
     return;
@@ -42,7 +40,7 @@ void STS3XComponent::dump_config() {
 
   LOG_SENSOR("  ", "STS3x", this);
 }
-float STS3XComponent::get_setup_priority() const { return setup_priority::DATA; }
+
 void STS3XComponent::update() {
   if (this->status_has_warning()) {
     ESP_LOGD(TAG, "Retrying to reconnect the sensor.");
@@ -67,5 +65,4 @@ void STS3XComponent::update() {
   });
 }
 
-}  // namespace sts3x
-}  // namespace esphome
+}  // namespace esphome::sts3x

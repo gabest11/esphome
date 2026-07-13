@@ -1,12 +1,10 @@
 #include "cst226_touchscreen.h"
 
-namespace esphome {
-namespace cst226 {
+namespace esphome::cst226 {
 
 static const char *const TAG = "cst226.touchscreen";
 
 void CST226Touchscreen::setup() {
-  ESP_LOGCONFIG(TAG, "Running setup");
   if (this->reset_pin_ != nullptr) {
     this->reset_pin_->setup();
     this->reset_pin_->digital_write(true);
@@ -95,7 +93,6 @@ void CST226Touchscreen::continue_setup_() {
     }
   }
   this->setup_complete_ = true;
-  ESP_LOGCONFIG(TAG, "CST226 Touchscreen setup complete");
 }
 void CST226Touchscreen::update_button_state_(bool state) {
   if (this->button_touched_ == state)
@@ -112,5 +109,4 @@ void CST226Touchscreen::dump_config() {
   LOG_PIN("  Reset Pin: ", this->reset_pin_);
 }
 
-}  // namespace cst226
-}  // namespace esphome
+}  // namespace esphome::cst226

@@ -2,8 +2,7 @@
 #include "esphome/core/helpers.h"
 #include "esphome/core/log.h"
 
-namespace esphome {
-namespace honeywellabp2_i2c {
+namespace esphome::honeywellabp2_i2c {
 
 static const uint8_t STATUS_BIT_POWER = 6;
 static const uint8_t STATUS_BIT_BUSY = 5;
@@ -15,7 +14,7 @@ static const char *const TAG = "honeywellabp2";
 void HONEYWELLABP2Sensor::read_sensor_data() {
   if (this->read(raw_data_, 7) != i2c::ERROR_OK) {
     ESP_LOGE(TAG, ESP_LOG_MSG_COMM_FAIL);
-    this->status_set_warning("couldn't read sensor data");
+    this->status_set_warning(LOG_STR("couldn't read sensor data"));
     return;
   }
   float press_counts = encode_uint24(raw_data_[1], raw_data_[2], raw_data_[3]);  // calculate digital pressure counts
@@ -31,7 +30,7 @@ void HONEYWELLABP2Sensor::read_sensor_data() {
 void HONEYWELLABP2Sensor::start_measurement() {
   if (this->write(i2c_cmd_, 3) != i2c::ERROR_OK) {
     ESP_LOGE(TAG, ESP_LOG_MSG_COMM_FAIL);
-    this->status_set_warning("couldn't start measurement");
+    this->status_set_warning(LOG_STR("couldn't start measurement"));
     return;
   }
   this->measurement_running_ = true;
@@ -40,7 +39,7 @@ void HONEYWELLABP2Sensor::start_measurement() {
 bool HONEYWELLABP2Sensor::is_measurement_ready() {
   if (this->read(raw_data_, 1) != i2c::ERROR_OK) {
     ESP_LOGE(TAG, ESP_LOG_MSG_COMM_FAIL);
-    this->status_set_warning("couldn't check measurement");
+    this->status_set_warning(LOG_STR("couldn't check measurement"));
     return false;
   }
   if ((raw_data_[0] & (0x1 << STATUS_BIT_BUSY)) > 0) {
@@ -53,7 +52,7 @@ bool HONEYWELLABP2Sensor::is_measurement_ready() {
 void HONEYWELLABP2Sensor::measurement_timeout() {
   ESP_LOGE(TAG, "Timeout!");
   this->measurement_running_ = false;
-  this->status_set_warning("measurement timed out");
+  this->status_set_warning(LOG_STR("measurement timed out"));
 }
 
 float HONEYWELLABP2Sensor::get_pressure() { return this->last_pressure_; }
@@ -107,5 +106,4 @@ void HONEYWELLABP2Sensor::set_transfer_function(ABP2TRANFERFUNCTION transfer_fun
   }
 }
 
-}  // namespace honeywellabp2_i2c
-}  // namespace esphome
+}  // namespace esphome::honeywellabp2_i2c
